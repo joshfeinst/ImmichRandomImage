@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -38,6 +38,7 @@ class ImmichCoordinator(DataUpdateCoordinator):
         self.hub = hub
         self.config_entry = config_entry
         self.image_bytes: bytes | None = None
+        self.content_type: str = "image/jpeg"
         self.albums: list[dict] = []
         self._force_refresh = False
 
@@ -49,7 +50,9 @@ class ImmichCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name=f"{DOMAIN}_{config_entry.entry_id[:8]}",
-            update_interval=None,  # We poll manually or on scan interval
+            # Drive refreshes from the configured interval. The image entity
+            # does not poll, so this is the only scheduled fetch.
+            update_interval=timedelta(seconds=int(scan_interval)),
             update_method=self._async_update_data,
         )
         self._scan_interval_seconds = int(scan_interval)
@@ -62,7 +65,6 @@ class ImmichCoordinator(DataUpdateCoordinator):
     def force_refresh(self) -> None:
         """Flag that the next update should run regardless of interval."""
         self._force_refresh = True
-        self.async_set_updated_time(datetime.now())
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch a new random image from Immich.
@@ -88,12 +90,12 @@ class ImmichCoordinator(DataUpdateCoordinator):
             asset.get("originalFileName", "?"),
         )
 
-        image_bytes = await self.hub.download_asset(asset_id)
-        if not image_bytes:
+        result = await self.hub.download_asset(asset_id)
+        if not result:
             _LOGGER.warning("Failed to download image %s from Immich", asset_id)
             return self.data or {}
 
-        self.image_bytes = image_bytes
+        self.image_bytes, self.content_type = result
 
         data: dict[str, Any] = {
             "asset_id": asset_id,
