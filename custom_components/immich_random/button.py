@@ -45,4 +45,6 @@ class ImmichRefreshButton(ButtonEntity):
         """Handle the button press — fetch a new random image."""
         _LOGGER.info("Manual refresh button pressed")
         self._coordinator.force_refresh()
-        await self._coordinator.async_request_refresh()
+        # Refresh now; async_request_refresh is debounced (10 s cooldown), which
+        # silently delays taps that come shortly after a previous refresh.
+        await self._coordinator.async_refresh()
