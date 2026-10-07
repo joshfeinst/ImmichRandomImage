@@ -226,6 +226,7 @@ async def test_download_asset_success():
     hub = ImmichRandomHub(host="https://immich.local", api_key="test-key")
     mock_resp = mock_response(200)
     mock_resp.read = AsyncMock(return_value=b"image-bytes")
+    mock_resp.headers = {"Content-Type": "image/webp"}
     mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
     mock_resp.__aexit__ = AsyncMock(return_value=None)
 
@@ -237,7 +238,9 @@ async def test_download_asset_success():
     with patch.object(ImmichRandomHub, "_get_session", return_value=mock_session):
         result = await hub.download_asset("asset-1")
 
-    assert result == b"image-bytes"
+    assert result == (b"image-bytes", "image/webp")
+    called_url = mock_session.get.call_args.kwargs["url"]
+    assert called_url == "https://immich.local/api/assets/asset-1/thumbnail?size=preview"
 
 
 @pytest.mark.asyncio
