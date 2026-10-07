@@ -97,3 +97,5 @@ class ImmichAlbumSelect(SelectEntity):
         else:
             _LOGGER.info("Album selection set to: %s", option)
             self._coordinator.set_album_ids([option])
+        # Show an image from the new selection right away
+        await self._coordinator.async_request_refresh()
