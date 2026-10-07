@@ -121,11 +121,24 @@ class ImmichRandomHub:
             _LOGGER.error("Error connecting to the API: %s", exception)
             raise CannotConnect from exception
 
-    async def download_asset(self, asset_id: str) -> bytes | None:
-        """Download the original image."""
+    async def download_asset(
+        self, asset_id: str, size: str = "preview"
+    ) -> tuple[bytes, str] | None:
+        """Download an image for display.
+
+        Defaults to Immich's server-generated preview (JPEG/WebP, ~1440px),
+        which every browser can render, instead of the original file (which may
+        be HEIC/RAW and many MB). Pass size="original" for the original.
+        Returns (bytes, content_type).
+        """
         try:
             session = self._get_session()
-            url = urljoin(self.host, f"/api/assets/{asset_id}/original")
+            if size == "original":
+                url = urljoin(self.host, f"/api/assets/{asset_id}/original")
+            else:
+                url = urljoin(
+                    self.host, f"/api/assets/{asset_id}/thumbnail?size={size}"
+                )
             headers = {_HEADER_API_KEY: self.api_key}
             async with session.get(url=url, headers=headers) as response:
                 if response.status != 200:
@@ -133,7 +146,8 @@ class ImmichRandomHub:
                         "Download failed: status=%d", response.status
                     )
                     return None
-                return await response.read()
+                content_type = response.headers.get("Content-Type", "image/jpeg")
+                return await response.read(), content_type.split(";")[0]
         except aiohttp.ClientError as exception:
             _LOGGER.error("Error connecting to the API: %s", exception)
             raise CannotConnect from exception
