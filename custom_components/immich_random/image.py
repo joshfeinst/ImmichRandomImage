@@ -2,26 +2,18 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from homeassistant.components.image import ImageEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
+from .const import DOMAIN
 from .coordinator import ImmichCoordinator
 
 _LOGGER = logging.getLogger(__name__)
-
-
-def _get_scan_interval(config_entry: ConfigEntry) -> timedelta:
-    """Get the scan interval from config entry options."""
-    seconds = config_entry.options.get(
-        "scan_interval",
-        config_entry.data.get("scan_interval", DEFAULT_SCAN_INTERVAL),
-    )
-    return timedelta(seconds=int(seconds))
 
 
 async def async_setup_entry(
@@ -40,13 +32,15 @@ async def async_setup_entry(
         coordinator.hub.verify_ssl,
     )
 
+    # Fetch the first image now; afterwards the coordinator refreshes on the
+    # configured scan interval (the entity itself does not poll).
+    await coordinator.async_refresh()
+
     async_add_entities([ImmichRandomImageEntity(hass, coordinator, config_entry)])
 
 
-class ImmichRandomImageEntity(ImageEntity):
+class ImmichRandomImageEntity(CoordinatorEntity[ImmichCoordinator], ImageEntity):
     """Image entity that displays a random image from Immich."""
-
-    _attr_should_poll = True
 
     def __init__(
         self,
@@ -55,7 +49,8 @@ class ImmichRandomImageEntity(ImageEntity):
         config_entry: ConfigEntry,
     ) -> None:
         """Initialize the entity."""
-        super().__init__(hass=hass, verify_ssl=coordinator.hub.verify_ssl)
+        CoordinatorEntity.__init__(self, coordinator)
+        ImageEntity.__init__(self, hass=hass, verify_ssl=coordinator.hub.verify_ssl)
         self._coordinator = coordinator
         self._config_entry = config_entry
         album_ids = coordinator.hub.album_ids
@@ -72,20 +67,16 @@ class ImmichRandomImageEntity(ImageEntity):
             self._attr_unique_id = "immich_random"
             self._attr_name = "Immich Random Image"
 
-    @property
-    def scan_interval(self) -> timedelta:
-        """Return the scan interval for this entity."""
-        return _get_scan_interval(self._config_entry)
-
-    async def async_update(self) -> None:
-        """Fetch a new random image via the coordinator."""
-        await self._coordinator.async_request_refresh()
-
     async def async_image(self) -> bytes | None:
         """Return the current image bytes."""
         if not self._coordinator.image_bytes:
             await self._coordinator.async_request_refresh()
         return self._coordinator.image_bytes
+
+    @property
+    def content_type(self) -> str:
+        """Return the MIME type reported by Immich for the current image."""
+        return self._coordinator.content_type
 
     @property
     def extra_state_attributes(self) -> dict:
